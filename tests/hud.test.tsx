@@ -49,7 +49,11 @@ test('a reading lights the band, the pane and the briefing on every surface', as
 
   // the desktop draws the reactor strip instead of the text row
   const strip = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  const svg = String((await strip.find({ type: 'Svg' }))?.props.source)
+  const drawn = await strip.find({ type: 'Svg' })
+  const svg = String(drawn?.props.source)
+  // sized to the band (120 columns), not left to the frame's default box
+  expect(drawn?.props.width).toBe(878)
+  expect(drawn?.props.height).toBe(64)
   expect(svg).toContain('48K left')
   expect(svg).toContain('76% used')
   expect(svg).toContain('58%')
@@ -154,9 +158,12 @@ test('a narrow band sheds detail, and the breakdown names the biggest consumer',
   expect(await thin.find({ key: 'hud' })).toBeDefined()
   await thin.unmount()
 
-  // the strip scales instead: the same drawing at any width
+  // a narrow strip keeps its minimum width and drops the reset timers from the row
   const strip = await $.ui.mount({ ...BAND, surface: 'desktop', props: { ...BAND.props, bodyColumns: 30 } })
-  expect(String((await strip.find({ type: 'Svg' }))?.props.source)).toContain('↻')
+  const narrow = await strip.find({ type: 'Svg' })
+  expect(narrow?.props.width).toBe(420)
+  expect(String(narrow?.props.source)).toContain('5H')
+  expect(String(narrow?.props.source)).not.toContain('↻')
   await strip.unmount()
 
   for (const surface of ['terminal', 'desktop'] as const) {

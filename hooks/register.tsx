@@ -294,14 +294,19 @@ const hintFor = (name: string) => SLICE_HINTS.find(([re]) => re.test(name)) ?? [
 
 const xml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-// The desktop band: a mini reactor for context with its forecast, then a capsule
-// gauge per quota. Hover any part for exact numbers; it pulses past 85% and spins
-// fast while compacting, like the pane's reactor.
-function stripSvg(r: Reading, p: Projection, s: HudSettings, compacting: boolean, now: number) {
+const STRIP_H = 64
+
+// The desktop band: a mini reactor for context with its forecast, then a gauge per
+// quota stretched to fill the band. Drawn at `width` CSS pixels, one unit a pixel,
+// so text stays crisp. Hover any part for exact numbers; it pulses past 85% and
+// spins fast while compacting, like the pane's reactor.
+function stripSvg(r: Reading, p: Projection, s: HudSettings, compacting: boolean, now: number, width: number) {
+  const W = Math.round(width)
   const pct = usedPct(r)
   const c = heat(pct)
   const mono = 'font-family="Consolas, Menlo, monospace"'
-  const ring = 2 * Math.PI * 18
+  const sans = 'font-family="Segoe UI, system-ui, -apple-system, sans-serif"'
+  const ring = 2 * Math.PI * 21
   const spin = compacting ? 4 : 30
   const pulse =
     pct >= 85 || compacting
@@ -315,35 +320,44 @@ function stripSvg(r: Reading, p: Projection, s: HudSettings, compacting: boolean
 
   const reactor =
     `<g><title>${xml(tip)}</title>` +
-    `<circle cx="30" cy="28" r="24" fill="none" stroke="${ORANGE}" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="2 5">` +
-    `<animateTransform attributeName="transform" type="rotate" from="0 30 28" to="360 30 28" dur="${spin}s" repeatCount="indefinite"/></circle>` +
-    `<circle cx="30" cy="28" r="18" fill="none" stroke="${c}" stroke-opacity="0.18" stroke-width="5"/>` +
-    `<circle cx="30" cy="28" r="18" fill="none" stroke="${c}" stroke-width="5" stroke-linecap="round" ` +
-    `stroke-dasharray="${((ring * (100 - pct)) / 100).toFixed(1)} ${ring.toFixed(1)}" transform="rotate(-90 30 28)"/>` +
-    `<circle cx="30" cy="28" r="10" fill="#2e1810" stroke="${c}" stroke-opacity="0.7">${pulse}</circle>` +
-    `<text x="62" y="25" ${mono} font-size="15" font-weight="700" fill="#fff3ec">${compacting ? 'COMPACTING' : `${fmtK(left(r))} left`}</text>` +
-    `<text x="62" y="42" ${mono} font-size="11" fill="${DIM}">${pct}% used · ${forecast}</text></g>`
+    `<circle cx="38" cy="32" r="27" fill="none" stroke="${ORANGE}" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="2 5">` +
+    `<animateTransform attributeName="transform" type="rotate" from="0 38 32" to="360 38 32" dur="${spin}s" repeatCount="indefinite"/></circle>` +
+    `<circle cx="38" cy="32" r="21" fill="none" stroke="${c}" stroke-opacity="0.16" stroke-width="6"/>` +
+    `<circle cx="38" cy="32" r="21" fill="none" stroke="${c}" stroke-width="6" stroke-linecap="round" ` +
+    `stroke-dasharray="${((ring * (100 - pct)) / 100).toFixed(1)} ${ring.toFixed(1)}" transform="rotate(-90 38 32)"/>` +
+    `<circle cx="38" cy="32" r="12" fill="#2e1810" stroke="${c}" stroke-opacity="0.6"/>` +
+    `<circle cx="38" cy="32" r="4.5" fill="${c}">${pulse}</circle>` +
+    `<text x="78" y="30" ${sans} font-size="19" font-weight="600" fill="#fff3ec">${compacting ? 'Compacting…' : `${fmtK(left(r))} left`}` +
+    `<tspan ${sans} font-size="12" font-weight="400" fill="${DIM}"> of ${fmtK(r.window)}</tspan></text>` +
+    `<text x="78" y="49" ${mono} font-size="11.5" fill="${DIM}">${pct}% used · ${forecast}</text></g>`
 
+  // Quotas fill whatever the band has left beside the reactor block.
   const limits = r.limits.slice(0, 2)
+  const x0 = 340
+  const right = W - 18
+  const roomy = right - x0 > 300
+  const valueW = roomy ? 132 : 48
+  const barX = x0 + 34
+  const barW = Math.max(40, right - valueW - 12 - barX)
   const rows = limits.map((l, i) => {
-    const y = limits.length === 1 ? 23 : 16 + i * 19
-    const fill = Math.max(0, Math.min(1, (100 - l.pct) / 100)) * 110
+    const cy = limits.length === 1 ? 32 : 22 + i * 21
+    const leftPct = Math.max(0, Math.min(100, 100 - l.pct))
     const reset = l.resetsAt ? span(Date.parse(l.resetsAt) - now) : undefined
     const lc = heat(l.pct)
     return (
       `<g><title>${xml(`${limitLong(l.kind)}: ${Math.round(l.pct)}% used${reset ? `, resets in ${reset}` : ''}`)}</title>` +
-      `<text x="296" y="${y + 8}" ${mono} font-size="11" fill="${DIM}">${xml(limitName(l.kind))}</text>` +
-      `<rect x="318" y="${y}" width="110" height="9" rx="4.5" fill="${lc}" fill-opacity="0.18"/>` +
-      `<rect x="318" y="${y}" width="${fill.toFixed(1)}" height="9" rx="4.5" fill="${lc}"/>` +
-      `<text x="436" y="${y + 8}" ${mono} font-size="11" fill="#fff3ec">${Math.round(100 - l.pct)}%${reset ? ` · ↻${reset}` : ''}</text></g>`
+      `<text x="${x0}" y="${cy + 4}" ${mono} font-size="11.5" fill="${DIM}">${xml(limitName(l.kind))}</text>` +
+      `<rect x="${barX}" y="${cy - 4}" width="${barW.toFixed(1)}" height="8" rx="4" fill="${lc}" fill-opacity="0.16"/>` +
+      `<rect x="${barX}" y="${cy - 4}" width="${((barW * leftPct) / 100).toFixed(1)}" height="8" rx="4" fill="${lc}"/>` +
+      `<text x="${right}" y="${cy + 4.5}" text-anchor="end" ${sans} font-size="12.5" fill="#fff3ec">${Math.round(leftPct)}%` +
+      `${roomy ? `<tspan fill="${DIM}"> left${reset ? ` · ↻ ${reset}` : ''}</tspan>` : ''}</text></g>`
     )
   })
-  const width = limits.length ? 540 : 282
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 56" width="${width}" height="56">
-<rect width="${width}" height="56" rx="10" fill="#150b07"/>
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${STRIP_H}" width="${W}" height="${STRIP_H}">
+<rect x="0.5" y="0.5" width="${W - 1}" height="${STRIP_H - 1}" rx="12" fill="#1a100c" stroke="${ORANGE}" stroke-opacity="0.22"/>
 ${reactor}
-${limits.length ? `<line x1="282" y1="12" x2="282" y2="44" stroke="${DIM}" stroke-opacity="0.3"/>` : ''}
+${limits.length ? `<line x1="${x0 - 18}" y1="14" x2="${x0 - 18}" y2="50" stroke="${DIM}" stroke-opacity="0.25"/>` : ''}
 ${rows.join('\n')}
 </svg>`
 }
@@ -580,13 +594,18 @@ export const register: Register = on => {
       const s = await read($, settingsA)
       const now = await $.clock.now()
       const p = project(r, await read($, samplesA), s, await read($, breakdownA), now)
+      // Size the frame ourselves: a cell is about 7.5 px on the desktop, and an
+      // unsized interactive frame falls back to a default box and shrinks the drawing.
+      const width = Math.max(420, Math.min(1200, (e.props.bodyColumns - 3) * 7.5))
       return (
         <Box flexDirection="row" flexWrap="nowrap" columnGap={1} alignItems="center">
           <Button key="hud" label="◢" plain onPress={() => $.ui.open({ id: PANE, title: TITLE })} />
           <Svg
             key="strip"
-            source={stripSvg(r, p, s, compacting, now)}
+            source={stripSvg(r, p, s, compacting, now, width)}
             alt={`Context ${pct}% used, ${fmtK(left(r))} tokens left`}
+            width={Math.round(width)}
+            height={STRIP_H}
             isInteractive
           />
         </Box>
