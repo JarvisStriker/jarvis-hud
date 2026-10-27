@@ -7,6 +7,7 @@ A Claude Code mod that shows your remaining tokens and acts before you run out.
   ◢ CTX ▰▰▰▰▰▰▱▱▱▱ 48K · 5H ▰▰▰▱▱ 58% ↻2h14m · 7D ▰▰▰▰▱ 81% ↻3d4h
   ```
   It goes from Claude orange to amber to red as things fill up. On narrow windows it drops detail rather than wrapping.
+  In the desktop app the band is graphical instead: a mini arc reactor for context with a turns-left forecast, and a capsule gauge per quota. Hover any part for exact numbers. The reactor pulses past 85% and spins fast while compacting.
 - **HUD pane** (`/jarvis`, or click `◢`):
   - **Gauge:** an animated arc-reactor ring for context, with inner rings for your quotas.
   - **Projections:** tokens used per turn, turns left until compaction, and when the 5-hour quota runs out at your current pace.

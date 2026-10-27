@@ -294,6 +294,60 @@ const hintFor = (name: string) => SLICE_HINTS.find(([re]) => re.test(name)) ?? [
 
 const xml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+// The desktop band: a mini reactor for context with its forecast, then a capsule
+// gauge per quota. Hover any part for exact numbers; it pulses past 85% and spins
+// fast while compacting, like the pane's reactor.
+function stripSvg(r: Reading, p: Projection, s: HudSettings, compacting: boolean, now: number) {
+  const pct = usedPct(r)
+  const c = heat(pct)
+  const mono = 'font-family="Consolas, Menlo, monospace"'
+  const ring = 2 * Math.PI * 18
+  const spin = compacting ? 4 : 30
+  const pulse =
+    pct >= 85 || compacting
+      ? `<animate attributeName="opacity" values="0.35;1;0.35" dur="${compacting ? 0.8 : 1.4}s" repeatCount="indefinite"/>`
+      : ''
+  const forecast =
+    p.turnsLeft !== undefined ? `~${p.turnsLeft} turns to ${s.autoCompact ? 'compact' : 'auto-compact'}` : 'calibrating burn rate'
+  const tip = `${fmtK(r.tokens ?? 0)} of ${fmtK(r.window)} used · auto-compact at ${fmtK(p.target)}${
+    p.perTurn !== undefined ? ` · ~${fmtK(p.perTurn)}/turn` : ''
+  }`
+
+  const reactor =
+    `<g><title>${xml(tip)}</title>` +
+    `<circle cx="30" cy="28" r="24" fill="none" stroke="${ORANGE}" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="2 5">` +
+    `<animateTransform attributeName="transform" type="rotate" from="0 30 28" to="360 30 28" dur="${spin}s" repeatCount="indefinite"/></circle>` +
+    `<circle cx="30" cy="28" r="18" fill="none" stroke="${c}" stroke-opacity="0.18" stroke-width="5"/>` +
+    `<circle cx="30" cy="28" r="18" fill="none" stroke="${c}" stroke-width="5" stroke-linecap="round" ` +
+    `stroke-dasharray="${((ring * (100 - pct)) / 100).toFixed(1)} ${ring.toFixed(1)}" transform="rotate(-90 30 28)"/>` +
+    `<circle cx="30" cy="28" r="10" fill="#2e1810" stroke="${c}" stroke-opacity="0.7">${pulse}</circle>` +
+    `<text x="62" y="25" ${mono} font-size="15" font-weight="700" fill="#fff3ec">${compacting ? 'COMPACTING' : `${fmtK(left(r))} left`}</text>` +
+    `<text x="62" y="42" ${mono} font-size="11" fill="${DIM}">${pct}% used · ${forecast}</text></g>`
+
+  const limits = r.limits.slice(0, 2)
+  const rows = limits.map((l, i) => {
+    const y = limits.length === 1 ? 23 : 16 + i * 19
+    const fill = Math.max(0, Math.min(1, (100 - l.pct) / 100)) * 110
+    const reset = l.resetsAt ? span(Date.parse(l.resetsAt) - now) : undefined
+    const lc = heat(l.pct)
+    return (
+      `<g><title>${xml(`${limitLong(l.kind)}: ${Math.round(l.pct)}% used${reset ? `, resets in ${reset}` : ''}`)}</title>` +
+      `<text x="296" y="${y + 8}" ${mono} font-size="11" fill="${DIM}">${xml(limitName(l.kind))}</text>` +
+      `<rect x="318" y="${y}" width="110" height="9" rx="4.5" fill="${lc}" fill-opacity="0.18"/>` +
+      `<rect x="318" y="${y}" width="${fill.toFixed(1)}" height="9" rx="4.5" fill="${lc}"/>` +
+      `<text x="436" y="${y + 8}" ${mono} font-size="11" fill="#fff3ec">${Math.round(100 - l.pct)}%${reset ? ` · ↻${reset}` : ''}</text></g>`
+    )
+  })
+  const width = limits.length ? 540 : 282
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 56" width="${width}" height="56">
+<rect width="${width}" height="56" rx="10" fill="#150b07"/>
+${reactor}
+${limits.length ? `<line x1="282" y1="12" x2="282" y2="44" stroke="${DIM}" stroke-opacity="0.3"/>` : ''}
+${rows.join('\n')}
+</svg>`
+}
+
 type Wedge = { name: string; tokens: number; color: string }
 
 function wedges(b: Breakdown): Wedge[] {
@@ -503,7 +557,9 @@ export const register: Register = on => {
     const r = await read($, readingA)
     await read($, tickA)
     const compacting = await read($, compactingA)
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const table = $.ui.resolve(e)
+    const { Box, Text, Button } = table
+    const Svg = e.surface !== 'terminal' && 'Svg' in table ? table.Svg : undefined
     if (!r || r.tokens === undefined) {
       return (
         <Box flexDirection="row" flexWrap="nowrap" columnGap={1} alignItems="center">
@@ -518,6 +574,24 @@ export const register: Register = on => {
       )
     }
     const pct = usedPct(r)
+
+    // Surfaces that draw vectors get the reactor strip; the terminal keeps the text row.
+    if (Svg) {
+      const s = await read($, settingsA)
+      const now = await $.clock.now()
+      const p = project(r, await read($, samplesA), s, await read($, breakdownA), now)
+      return (
+        <Box flexDirection="row" flexWrap="nowrap" columnGap={1} alignItems="center">
+          <Button key="hud" label="◢" plain onPress={() => $.ui.open({ id: PANE, title: TITLE })} />
+          <Svg
+            key="strip"
+            source={stripSvg(r, p, s, compacting, now)}
+            alt={`Context ${pct}% used, ${fmtK(left(r))} tokens left`}
+            isInteractive
+          />
+        </Box>
+      )
+    }
 
     // One row, always: try the richest layout that fits the band's width, then
     // shed detail (bar length, reset timers, the weekly quota) until it does.
