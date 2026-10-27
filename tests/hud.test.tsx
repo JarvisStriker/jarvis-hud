@@ -121,7 +121,17 @@ test('past the threshold, a finished turn triggers a compaction', async ($, on) 
   expect(compactions).toBe(1)
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await pane.find({ type: 'Text', text: /Compaction complete\. 180K → 30K/ })).toBeDefined()
+  // its own compaction never reaches its own session.compact hook, so it records it itself
+  const drawn = (await pane.findAll({ type: 'Svg' })).map(s => String(s.props.source)).join('\n')
+  expect(drawn).toContain('1 compaction · 150K freed')
   await pane.unmount()
+
+  // /jarvis compact starts after the command returns: inside command.run the host refuses it
+  const asked = await $.command.run({ command: 'jarvis', args: 'compact' })
+  expect(asked.text).toContain('Compaction starting')
+  await clock.advance(10)
+  await clock.settle()
+  expect(compactions).toBe(2)
 })
 
 test('a narrow band sheds detail, and the breakdown names the biggest consumer', async ($, on) => {
