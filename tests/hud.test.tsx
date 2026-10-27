@@ -69,9 +69,9 @@ test('a reading lights the band, the pane and the briefing on every surface', as
 
   // the desktop pane draws sized frames: an unsized one shrinks into a 150 px box
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const [reactor, stats] = await pane.findAll({ type: 'Svg' })
-  expect(reactor?.props.width).toBe(260)
-  expect(reactor?.props.height).toBe(260)
+  // no big reactor: the readout cards lead the pane
+  const [stats] = await pane.findAll({ type: 'Svg' })
+  expect(String(stats?.props.source)).not.toContain('TOKENS LEFT')
   expect(stats?.props.width).toBe(435)
   expect(Number(stats?.props.height)).toBeGreaterThan(100)
   expect(String(stats?.props.source)).toContain('48K left')

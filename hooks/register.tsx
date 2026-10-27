@@ -229,63 +229,7 @@ async function setSetting($: EngineInterface, patch: Partial<HudSettings>) {
   await $.store.set('settings', await read($, settingsA))
 }
 
-// ── SVG: arc reactor & breakdown strip ───────────────────────────────────
-
-function reactorSvg(r: Reading, compacting: boolean) {
-  const pct = usedPct(r)
-  const c = heat(pct)
-  const frac = left(r) / r.window
-  const lit = Math.round(frac * 60)
-  const ticks = Array.from({ length: 60 }, (_, i) => {
-    const on = i < lit
-    return `<rect x="147" y="12" width="6" height="20" rx="1.5" fill="${c}" opacity="${on ? 1 : 0.12}" transform="rotate(${i * 6} 150 150)"/>`
-  }).join('')
-
-  const ring = (l: Limit | undefined, radius: number, width: number) => {
-    if (!l) return ''
-    const len = 2 * Math.PI * radius
-    const f = Math.max(0, Math.min(1, (100 - l.pct) / 100))
-    const col = heat(l.pct)
-    return (
-      `<circle cx="150" cy="150" r="${radius}" fill="none" stroke="${col}" stroke-opacity="0.14" stroke-width="${width}"/>` +
-      `<circle cx="150" cy="150" r="${radius}" fill="none" stroke="${col}" stroke-width="${width}" stroke-linecap="round" ` +
-      `stroke-dasharray="${(len * f).toFixed(1)} ${len.toFixed(1)}" transform="rotate(-90 150 150)"/>`
-    )
-  }
-
-  const five = r.limits.find(l => l.kind === 'five_hour')
-  const week = r.limits.find(l => l.kind === 'seven_day')
-  const spin = compacting ? 4 : 30
-  const pulse =
-    pct >= 85 || compacting
-      ? `<animate attributeName="opacity" values="0.2;0.65;0.2" dur="${compacting ? 0.8 : 1.4}s" repeatCount="indefinite"/>`
-      : ''
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="300" height="300">
-<defs>
-  <radialGradient id="bg" cx="50%" cy="50%" r="60%"><stop offset="0%" stop-color="#2e1810"/><stop offset="65%" stop-color="#150b07"/><stop offset="100%" stop-color="#080403"/></radialGradient>
-  <radialGradient id="core" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffffff"/><stop offset="30%" stop-color="${c}"/><stop offset="100%" stop-color="${c}" stop-opacity="0"/></radialGradient>
-  <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-</defs>
-<rect width="300" height="300" rx="20" fill="url(#bg)"/>
-<g stroke="${ORANGE}" stroke-opacity="0.08">${Array.from({ length: 11 }, (_, i) => `<line x1="${i * 30}" y1="0" x2="${i * 30}" y2="300"/><line x1="0" y1="${i * 30}" x2="300" y2="${i * 30}"/>`).join('')}</g>
-<g filter="url(#glow)">${ticks}</g>
-<circle cx="150" cy="150" r="117" fill="none" stroke="${ORANGE}" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="2 7">
-  <animateTransform attributeName="transform" type="rotate" from="0 150 150" to="360 150 150" dur="${spin}s" repeatCount="indefinite"/>
-</circle>
-<g filter="url(#glow)">${ring(five, 104, 6)}${ring(week, 92, 4)}</g>
-<circle cx="150" cy="150" r="78" fill="none" stroke="${c}" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="22 12">
-  <animateTransform attributeName="transform" type="rotate" from="360 150 150" to="0 150 150" dur="${spin * 0.6}s" repeatCount="indefinite"/>
-</circle>
-<circle cx="150" cy="150" r="66" fill="#140a06" stroke="${c}" stroke-opacity="0.8" stroke-width="1.5"/>
-<circle cx="150" cy="150" r="64" fill="url(#core)" opacity="0.25">${pulse}</circle>
-<text x="150" y="146" text-anchor="middle" font-family="Consolas, Menlo, monospace" font-size="34" font-weight="700" fill="#fff3ec" filter="url(#glow)">${fmtK(left(r))}</text>
-<text x="150" y="166" text-anchor="middle" font-family="Consolas, Menlo, monospace" font-size="9.5" letter-spacing="3" fill="${c}">${compacting ? 'COMPACTING' : 'TOKENS LEFT'}</text>
-<text x="150" y="184" text-anchor="middle" font-family="Consolas, Menlo, monospace" font-size="11" fill="#d8b4a3">${pct}% USED</text>
-<text x="18" y="286" font-family="Consolas, Menlo, monospace" font-size="9" letter-spacing="1.5" fill="${DIM}">CTX ${fmtK(r.window)}</text>
-<text x="282" y="286" text-anchor="end" font-family="Consolas, Menlo, monospace" font-size="9" letter-spacing="1.5" fill="${DIM}">${five ? `5H ${Math.round(100 - five.pct)}%` : ''}${week ? ` · 7D ${Math.round(100 - week.pct)}%` : ''}</text>
-</svg>`
-}
+// ── SVG: drawn pane sections ─────────────────────────────────────────────
 
 // What each /context row is, in plain words, and what to do when it grows.
 const SLICE_HINTS: [RegExp, string, string][] = [
@@ -372,7 +316,7 @@ ${rows.join('\n')}
 
 // The pane's readout under the reactor: a card each for context and the quotas,
 // then a forecast row. Drawn at `width` CSS pixels, one unit a pixel.
-function statsSvg(r: Reading, p: Projection, s: HudSettings, now: number, width: number) {
+function statsSvg(r: Reading, p: Projection, s: HudSettings, compacting: boolean, now: number, width: number) {
   const W = Math.round(width)
   const mono = 'font-family="Consolas, Menlo, monospace"'
   const sans = 'font-family="Segoe UI, system-ui, -apple-system, sans-serif"'
@@ -381,7 +325,7 @@ function statsSvg(r: Reading, p: Projection, s: HudSettings, now: number, width:
   const cards: Card[] = [
     {
       label: 'CONTEXT',
-      value: `${fmtK(left(r))} left`,
+      value: compacting ? 'Compacting…' : `${fmtK(left(r))} left`,
       caption: `${fmtK(r.tokens ?? 0)} of ${fmtK(r.window)} used`,
       leftPct: 100 - pct,
       color: heat(pct),
@@ -1152,9 +1096,8 @@ export const register: Register = on => {
     // Every frame is sized here: an unsized interactive frame falls back to a
     // 150 px box and shrinks the drawing inside it. A cell is about 7.5 px.
     const paneW = Math.max(300, Math.min(720, (e.props.bodyColumns - 2) * 7.5))
-    const reactorW = Math.min(260, paneW)
     const donutW = Math.min(440, paneW)
-    const stats = Svg ? statsSvg(r, p, s, now, paneW) : undefined
+    const stats = Svg ? statsSvg(r, p, s, compacting, now, paneW) : undefined
     const samples = await read($, samplesA)
     const turns = await read($, turnsA)
     const tools = await read($, toolsA)
@@ -1173,18 +1116,7 @@ export const register: Register = on => {
       <Box flexDirection="column" gap={1}>
         {header}
 
-        {Svg ? (
-          <Box alignItems="center">
-            <Svg
-              key="reactor"
-              source={reactorSvg(r, compacting)}
-              alt={`Context ${pct}% used, ${fmtK(left(r))} tokens left`}
-              width={Math.round(reactorW)}
-              height={Math.round(reactorW)}
-              isInteractive
-            />
-          </Box>
-        ) : (
+        {Svg ? null : (
           <Text color={heat(pct)}>
             CTX {bar(1 - pct / 100, 20)} {fmtK(left(r))} left
           </Text>
