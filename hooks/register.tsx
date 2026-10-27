@@ -362,6 +362,91 @@ ${rows.join('\n')}
 </svg>`
 }
 
+// The pane's readout under the reactor: a card each for context and the quotas,
+// then a forecast row. Drawn at `width` CSS pixels, one unit a pixel.
+function statsSvg(r: Reading, p: Projection, s: HudSettings, now: number, width: number) {
+  const W = Math.round(width)
+  const mono = 'font-family="Consolas, Menlo, monospace"'
+  const sans = 'font-family="Segoe UI, system-ui, -apple-system, sans-serif"'
+  const pct = usedPct(r)
+  type Card = { label: string; value: string; caption: string; leftPct: number; color: string; tip: string }
+  const cards: Card[] = [
+    {
+      label: 'CONTEXT',
+      value: `${fmtK(left(r))} left`,
+      caption: `${fmtK(r.tokens ?? 0)} of ${fmtK(r.window)} used`,
+      leftPct: 100 - pct,
+      color: heat(pct),
+      tip: `Auto-compact at ${fmtK(p.target)}`,
+    },
+    ...r.limits.slice(0, 2).map(l => {
+      const reset = l.resetsAt ? span(Date.parse(l.resetsAt) - now) : undefined
+      return {
+        label: limitName(l.kind) === '5H' ? '5-HOUR' : limitName(l.kind) === '7D' ? 'WEEKLY' : limitName(l.kind),
+        value: `${Math.round(100 - l.pct)}% left`,
+        caption: reset ? `resets in ${reset}` : `${Math.round(l.pct)}% used`,
+        leftPct: 100 - l.pct,
+        color: heat(l.pct),
+        tip: `${limitLong(l.kind)}: ${Math.round(l.pct)}% used`,
+      }
+    }),
+  ]
+
+  const gap = 10
+  const cols = W >= 390 ? cards.length : 1
+  const cardW = (W - gap * (cols - 1)) / cols
+  const cardH = 84
+  const card = (c: Card, i: number) => {
+    const x = (i % cols) * (cardW + gap)
+    const y = Math.floor(i / cols) * (cardH + gap)
+    const barW = cardW - 28
+    return (
+      `<g><title>${xml(c.tip)}</title>` +
+      `<rect x="${x + 0.5}" y="${y + 0.5}" width="${(cardW - 1).toFixed(1)}" height="${cardH - 1}" rx="10" fill="#1a100c" stroke="${ORANGE}" stroke-opacity="0.18"/>` +
+      `<text x="${x + 14}" y="${y + 22}" ${mono} font-size="10.5" letter-spacing="1.5" fill="${DIM}">${xml(c.label)}</text>` +
+      `<text x="${x + 14}" y="${y + 47}" ${sans} font-size="21" font-weight="600" fill="${c.color}">${xml(c.value)}</text>` +
+      `<text x="${x + 14}" y="${y + 63}" ${sans} font-size="11.5" fill="${DIM}">${xml(c.caption)}</text>` +
+      `<rect x="${x + 14}" y="${y + 70}" width="${barW.toFixed(1)}" height="5" rx="2.5" fill="${c.color}" fill-opacity="0.16"/>` +
+      `<rect x="${x + 14}" y="${y + 70}" width="${((barW * Math.max(0, Math.min(100, c.leftPct))) / 100).toFixed(1)}" height="5" rx="2.5" fill="${c.color}"/></g>`
+    )
+  }
+  const cardsH = Math.ceil(cards.length / cols) * (cardH + gap) - gap
+
+  // Forecast: burn rate, turns to compaction, and whether the 5-hour quota holds.
+  const fy = cardsH + gap
+  const fh = 58
+  const cells: [string, string, string][] = [
+    ['BURN RATE', p.perTurn !== undefined ? `~${fmtK(p.perTurn)} / turn` : 'calibrating', DIM],
+    [
+      s.autoCompact ? `TO COMPACT (${s.compactAt}%)` : 'TO AUTO-COMPACT',
+      p.turnsLeft !== undefined ? `${p.turnsLeft} turns` : '—',
+      p.turnsLeft !== undefined && p.turnsLeft < 4 ? AMBER : '#fff3ec',
+    ],
+    [
+      '5-HOUR QUOTA',
+      p.quotaEta === undefined ? 'calibrating' : p.quotaSafe ? 'lasts to reset' : `out ≈ ${clock(p.quotaEta)}`,
+      p.quotaEta !== undefined && !p.quotaSafe ? RED : '#fff3ec',
+    ],
+  ]
+  const cw = W / cells.length
+  const forecast =
+    `<rect x="0.5" y="${fy + 0.5}" width="${W - 1}" height="${fh - 1}" rx="10" fill="#1a100c" stroke="${ORANGE}" stroke-opacity="0.18"/>` +
+    cells
+      .map(
+        ([label, value, color], i) =>
+          `<text x="${i * cw + 14}" y="${fy + 22}" ${mono} font-size="10" letter-spacing="1.2" fill="${DIM}">${xml(label)}</text>` +
+          `<text x="${i * cw + 14}" y="${fy + 44}" ${sans} font-size="15" font-weight="600" fill="${color === DIM ? '#fff3ec' : color}">${xml(value)}</text>` +
+          (i > 0 ? `<line x1="${i * cw}" y1="${fy + 12}" x2="${i * cw}" y2="${fy + fh - 12}" stroke="${DIM}" stroke-opacity="0.25"/>` : ''),
+      )
+      .join('')
+
+  const H = fy + fh
+  return {
+    height: H,
+    source: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${cards.map(card).join('')}${forecast}</svg>`,
+  }
+}
+
 type Wedge = { name: string; tokens: number; color: string }
 
 function wedges(b: Breakdown): Wedge[] {
@@ -667,7 +752,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const table = $.ui.resolve(e)
     const { Box, Text, Button } = table
-    const Svg = 'Svg' in table ? table.Svg : undefined
+    const Svg = e.surface !== 'terminal' && 'Svg' in table ? table.Svg : undefined
     const r = await read($, readingA)
     const s = await read($, settingsA)
     const b = await read($, breakdownA)
@@ -676,7 +761,6 @@ export const register: Register = on => {
     const bandHidden = await read($, bandHiddenA)
     await read($, tickA)
     const now = await $.clock.now()
-    const narrow = e.props.bodyColumns < 44
 
     const header = (
       <Box flexDirection="column">
@@ -701,6 +785,12 @@ export const register: Register = on => {
     const pct = usedPct(r)
     const p = project(r, await read($, samplesA), s, b, now)
     const ws = b ? wedges(b) : []
+    // Every frame is sized here: an unsized interactive frame falls back to a
+    // 150 px box and shrinks the drawing inside it. A cell is about 7.5 px.
+    const paneW = Math.max(300, Math.min(720, (e.props.bodyColumns - 2) * 7.5))
+    const reactorW = Math.min(260, paneW)
+    const donutW = Math.min(440, paneW)
+    const stats = Svg ? statsSvg(r, p, s, now, paneW) : undefined
 
     return (
       <Box flexDirection="column" gap={1}>
@@ -709,9 +799,11 @@ export const register: Register = on => {
         {Svg ? (
           <Box alignItems="center">
             <Svg
+              key="reactor"
               source={reactorSvg(r, compacting)}
               alt={`Context ${pct}% used, ${fmtK(left(r))} tokens left`}
-              width={narrow ? 220 : 280}
+              width={Math.round(reactorW)}
+              height={Math.round(reactorW)}
               isInteractive
             />
           </Box>
@@ -721,7 +813,18 @@ export const register: Register = on => {
           </Text>
         )}
 
-        <Box flexDirection="column">
+        {Svg && stats ? (
+          <Svg
+            key="stats"
+            source={stats.source}
+            alt={`Context ${fmtK(left(r))} left; ${r.limits.map(l => `${limitLong(l.kind)} ${Math.round(100 - l.pct)}% left`).join('; ')}`}
+            width={Math.round(paneW)}
+            height={stats.height}
+            isInteractive
+          />
+        ) : null}
+
+        {Svg ? null : <Box flexDirection="column">
           <Text>
             <Text color={DIM}>CONTEXT   </Text>
             <Text color={heat(pct)}>
@@ -735,9 +838,9 @@ export const register: Register = on => {
               {l.resetsAt ? <Text color={DIM}> · resets {span(Date.parse(l.resetsAt) - now)}</Text> : null}
             </Text>
           ))}
-        </Box>
+        </Box>}
 
-        <Box flexDirection="column">
+        {Svg ? null : <Box flexDirection="column">
           <Text color={ORANGE} bold>
             ▸ PROJECTIONS
           </Text>
@@ -751,7 +854,7 @@ export const register: Register = on => {
               {p.quotaSafe ? '5H quota resets before you hit it' : `5H quota exhausted ≈ ${clock(p.quotaEta)}`}
             </Text>
           ) : null}
-        </Box>
+        </Box>}
 
         {ws.length > 0 && b ? (
           <Box flexDirection="column" gap={1}>
@@ -759,7 +862,14 @@ export const register: Register = on => {
               ▸ WHERE IT WENT
             </Text>
             {Svg ? (
-              <Svg source={donutSvg(b, ws)} alt="Context window by category" width={narrow ? 240 : 316} isInteractive />
+              <Svg
+                key="donut"
+                source={donutSvg(b, ws)}
+                alt="Context window by category"
+                width={Math.round(donutW)}
+                height={Math.round((donutW * 184) / 316)}
+                isInteractive
+              />
             ) : (
               <Box flexDirection="column">
                 {ws.slice(0, 6).map(w => (

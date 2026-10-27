@@ -63,9 +63,25 @@ test('a reading lights the band, the pane and the briefing on every surface', as
   expect(await strip.find({ key: 'hud' })).toBeDefined()
   await strip.unmount()
 
+  const textPane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await textPane.find({ type: 'Text', text: /152K \/ 200K · 76%/ })).toBeDefined()
+  await textPane.unmount()
+
+  // the desktop pane draws sized frames: an unsized one shrinks into a 150 px box
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const [reactor, stats] = await pane.findAll({ type: 'Svg' })
+  expect(reactor?.props.width).toBe(260)
+  expect(reactor?.props.height).toBe(260)
+  expect(stats?.props.width).toBe(435)
+  expect(Number(stats?.props.height)).toBeGreaterThan(100)
+  expect(String(stats?.props.source)).toContain('48K left')
+  expect(String(stats?.props.source)).toContain('152K of 200K used')
+  expect(String(stats?.props.source)).toContain('42% used')
+  expect(await pane.find({ type: 'Text', text: /152K \/ 200K/ })).toBeUndefined()
+  await pane.unmount()
+
   for (const surface of ['terminal', 'desktop'] as const) {
     const pane = await $.ui.mount({ ...PANE, surface })
-    expect(await pane.find({ type: 'Text', text: /152K \/ 200K · 76%/ })).toBeDefined()
     // crossing 70% left a line in the log
     expect(await pane.find({ type: 'Text', text: /Context at 76%/ })).toBeDefined()
     expect(await pane.find({ key: 'compact' })).toBeDefined()
