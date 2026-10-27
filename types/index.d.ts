@@ -27,6 +27,16 @@ export type HudSettings = {
 
 export type LogLine = { at: number; text: string; level: 'info' | 'warn' | 'crit' | 'act' }
 
+// One main-loop turn: how long it took and what its requests cost in tokens.
+export type TurnStat = { at: number; ms: number; input: number; output: number; cacheRead: number; cacheWrite: number }
+
+// What a tool's results put into the context, estimated at 4 characters a token.
+export type ToolStat = { calls: number; tokens: number }
+
+export type FileStat = { path: string; tokens: number; reads: number }
+
+export type Compaction = { at: number; before?: number; after?: number; trigger: string }
+
 declare module 'claude-code' {
   interface PluginState {
     'jarvis-hud': {
@@ -39,6 +49,12 @@ declare module 'claude-code' {
       tick: number
       bandHidden: boolean
       compacting: boolean
+      turns: TurnStat[]
+      tools: Record<string, ToolStat>
+      files: FileStat[]
+      compactions: Compaction[]
+      startedAt: number | null
+      subagents: number
     }
   }
 }

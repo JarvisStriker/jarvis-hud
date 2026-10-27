@@ -1,6 +1,6 @@
 {
   "name": "jarvis-hud",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Stark-style HUD for token reserves: context and plan-limit gauges, burn-rate projections, alerts and auto-compaction.",
   "author": {
     "name": "JarvisStriker"

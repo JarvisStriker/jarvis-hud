@@ -15,7 +15,11 @@ A Claude Code mod that shows your remaining tokens and acts before you run out.
 - **HUD pane** (`/jarvis`, or click `◢`):
   - **Gauge:** an animated arc-reactor ring for context, with inner rings for your quotas.
   - **Projections:** tokens used per turn, turns left until compaction, and when the 5-hour quota runs out at your current pace.
+  - **Context over time:** context used after each turn, with the auto-compact line and a marker wherever a compaction freed space.
+  - **5-hour quota pace:** quota used across its window against an even pace to the reset, and when you'll run out at the current rate.
+  - **Efficiency:** prompt-cache hit rate with a bar per turn, turn speed (average, slowest, output tokens per second), and the session's age, turns and subagents.
   - **Where it went:** a donut chart of what's filling your context, plus a tip for the biggest consumer.
+  - **Tools and files by context:** which tools and which files put the most into your context, from the results the model read.
   - **Buttons and log:** one-click controls and a log of every alert and action.
 - **Alerts:**
   - Toasts at 70, 85 and 95% context, and at 75 and 90% of a quota. Critical levels also send a system notification.
