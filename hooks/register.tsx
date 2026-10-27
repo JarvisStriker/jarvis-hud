@@ -173,6 +173,17 @@ async function refreshBreakdown($: EngineInterface) {
   }
 }
 
+// A plugin's own $.session.compact does not reach its own session.compact hook,
+// so compactNow records its compactions here; the hook records everyone else's.
+// The same compaction seen twice within a few seconds is kept once.
+async function recordCompaction($: EngineInterface, c: Compaction) {
+  await update($, compactionsA, list => {
+    const last = list.at(-1)
+    if (last && c.at - last.at < 5000 && last.before === c.before && last.after === c.after) return list
+    return [...list, c].slice(-50)
+  })
+}
+
 async function compactNow($: EngineInterface, why: 'auto' | 'manual') {
   if (await read($, compactingA)) return 'Compaction already in progress.'
   await update($, compactingA, () => true)
@@ -183,6 +194,7 @@ async function compactNow($: EngineInterface, why: 'auto' | 'manual') {
       await say($, `Compaction declined: ${r.skip}`, 'warn')
       return `Compaction declined: ${r.skip}`
     }
+    await recordCompaction($, { at: await $.clock.now(), before: r.tokensBefore, after: r.tokensAfter, trigger: why })
     const freed =
       r.tokensBefore !== undefined && r.tokensAfter !== undefined
         ? ` ${fmtK(r.tokensBefore)} → ${fmtK(r.tokensAfter)}.`
@@ -781,7 +793,8 @@ function donutSvg(b: Breakdown, ws: Wedge[]) {
 <circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="#3a2419" stroke-width="24"/>
 ${arcs}${tick}
 <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-family="Consolas, Menlo, monospace" font-size="20" font-weight="700" fill="#fff3ec">${fmtK(usedTokens)}</text>
-<text x="${cx}" y="${cy + 14}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="9" letter-spacing="1.5" fill="${DIM}">IN USE · ${freePct}% FREE</text>
+<text x="${cx}" y="${cy + 13}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="8.5" letter-spacing="1.2" fill="${DIM}">IN USE</text>
+<text x="${cx}" y="${cy + 24}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="8.5" letter-spacing="1.2" fill="${DIM}">${freePct}% FREE</text>
 ${legend}
 </svg>`
 }
@@ -890,8 +903,7 @@ export const register: Register = on => {
   on('session.compact', async ($, e, next) => {
     const res = await next(e)
     if (e.agentId === undefined && e.trigger !== 'precompute' && res.skip === undefined) {
-      const c: Compaction = { at: await $.clock.now(), before: res.tokensBefore, after: res.tokensAfter, trigger: e.trigger }
-      await update($, compactionsA, list => [...list, c].slice(-50))
+      await recordCompaction($, { at: await $.clock.now(), before: res.tokensBefore, after: res.tokensAfter, trigger: e.trigger })
     }
     return res
   })
@@ -929,7 +941,11 @@ export const register: Register = on => {
       case 'status':
         return { text: await briefing($) }
       case 'compact':
-        return { text: await compactNow($, 'manual') }
+        // Claude Code refuses a compaction started inside command.run (it would
+        // compact under the turn this hook holds), so start it just after.
+        if (await read($, compactingA)) return { text: 'Compaction already in progress.' }
+        $.clock.after(0, () => void compactNow($, 'manual'))
+        return { text: 'Compaction starting. The log in /jarvis shows the result.' }
       case 'auto': {
         const at = Number(arg)
         if (Number.isFinite(at) && at >= 30 && at <= 98) {
