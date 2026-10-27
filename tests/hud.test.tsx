@@ -44,8 +44,8 @@ test('a reading lights the band, the pane and the briefing on every surface', as
     const band = await $.ui.mount({ ...BAND, surface })
     expect((await band.find({ type: 'Text', text: /^ 48K$/ }))?.text).toContain('48K')
     expect(await band.find({ key: 'hud' })).toBeDefined()
-    // dollars until the user picks a currency
-    expect(await band.find({ type: 'Text', text: /^\$3\.50$/ })).toBeDefined()
+    // cost is reported by Claude Code but never shown
+    expect(await band.find({ type: 'Text', text: /\$/ })).toBeUndefined()
     await band.unmount()
 
     const pane = await $.ui.mount({ ...PANE, surface })
@@ -59,6 +59,7 @@ test('a reading lights the band, the pane and the briefing on every surface', as
   const status = await $.command.run({ command: 'jarvis', args: 'status' })
   expect(status.text).toContain('48K of 200K')
   expect(status.text).toContain('5-hour quota: 42% used')
+  expect(status.text).not.toContain('cost')
 
   const off = await $.command.run({ command: 'jarvis', args: 'auto off' })
   expect(off.text).toBe('Auto-compact disarmed.')
@@ -91,7 +92,7 @@ test('past the threshold, a finished turn triggers a compaction', async ($, on) 
   await pane.unmount()
 })
 
-test('a picked currency converts the cost, and the breakdown names the biggest consumer', async ($, on) => {
+test('a narrow band sheds detail, and the breakdown names the biggest consumer', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse('2026-10-27T10:00:00Z') })
   mock.store(on)
   on('ui.toast', () => ({ value: undefined }))
@@ -100,7 +101,6 @@ test('a picked currency converts the cost, and the breakdown names the biggest c
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('http.fetch', () => ({ value: { status: 200, ok: true, headers: {}, text: '{"rates":{"INR":84}}' } }))
   on('session.usage', () => ({
     value: {
       startedAt: 0,
@@ -127,8 +127,6 @@ test('a picked currency converts the cost, and the breakdown names the biggest c
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.advance(10)
   await clock.settle()
-  const picked = await $.command.run({ command: 'jarvis', args: 'currency inr' })
-  expect(picked.text).toBe('Cost shown in INR at ₹84.00/$ live.')
   await $.session.measure({ ...MEASURE, context: { tokens: 100_000, window: 200_000, percent: 50 }, cost: { usd: 2 } })
   await $.turn.complete({ answer: 'ok', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(10)
@@ -136,12 +134,12 @@ test('a picked currency converts the cost, and the breakdown names the biggest c
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const band = await $.ui.mount({ ...BAND, surface })
-    expect(await band.find({ type: 'Text', text: /^₹168$/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /↻/ })).toBeDefined()
     await band.unmount()
 
-    // a narrow band sheds detail instead of wrapping: cost goes first
+    // a narrow band sheds detail instead of wrapping: reset timers go first
     const thin = await $.ui.mount({ ...BAND, surface, props: { ...BAND.props, bodyColumns: 30 } })
-    expect(await thin.find({ type: 'Text', text: /^₹168$/ })).toBeUndefined()
+    expect(await thin.find({ type: 'Text', text: /↻/ })).toBeUndefined()
     expect(await thin.find({ key: 'hud' })).toBeDefined()
     await thin.unmount()
 
@@ -153,5 +151,5 @@ test('a picked currency converts the cost, and the breakdown names the biggest c
   }
 
   const status = await $.command.run({ command: 'jarvis', args: 'status' })
-  expect(status.text).toContain('Session cost: ₹168 (at ₹84.00/$ live rate).')
+  expect(status.text).not.toContain('cost')
 })

@@ -5,7 +5,6 @@ export type Reading = {
   window: number
   pct?: number
   limits: Limit[]
-  usd?: number
   at: number
 }
 
@@ -26,9 +25,6 @@ export type HudSettings = {
   readGuard: boolean
 }
 
-// `rate` is units of `code` per US dollar.
-export type Fx = { code: string; rate: number; source: 'live' | 'manual' | 'default'; at?: number }
-
 export type LogLine = { at: number; text: string; level: 'info' | 'warn' | 'crit' | 'act' }
 
 declare module 'claude-code' {
@@ -43,7 +39,6 @@ declare module 'claude-code' {
       tick: number
       bandHidden: boolean
       compacting: boolean
-      fx: Fx
     }
   }
 }
