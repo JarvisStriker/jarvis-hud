@@ -1,7 +1,7 @@
 {
   "name": "jarvis-hud",
   "owner": {
-    "name": "kushal-novopay"
+    "name": "JarvisStriker"
   },
   "description": "JARVIS-style token HUD for Claude Code.",
   "plugins": [

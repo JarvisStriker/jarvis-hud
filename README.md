@@ -67,22 +67,22 @@ This works the same on Windows and macOS. It takes two steps: add this repositor
 **From a shell** (PowerShell on Windows, Terminal on macOS):
 
 ```bash
-claude plugin marketplace add kushal-novopay/jarvis-hud
+claude plugin marketplace add JarvisStriker/jarvis-hud
 claude plugin install jarvis-hud@jarvis-hud
 ```
 
 **Or from inside Claude Code** (an interactive terminal session):
 
 ```
-/plugin marketplace add kushal-novopay/jarvis-hud
+/plugin marketplace add JarvisStriker/jarvis-hud
 /plugin install jarvis-hud@jarvis-hud
 ```
 
-**In the desktop app:** click **+** next to the prompt box, then **Plugins** → **Add marketplace**, enter `kushal-novopay/jarvis-hud`, and click **Add plugin** on *jarvis-hud*.
+**In the desktop app:** click **+** next to the prompt box, then **Plugins** → **Add marketplace**, enter `JarvisStriker/jarvis-hud`, and click **Add plugin** on *jarvis-hud*.
 
 It installs at the **user** scope by default, so it loads in every new session, in the terminal and in the desktop app's Code tab.
 
-> Newer Claude Code versions also take a one-liner: `/plugin install jarvis-hud --marketplace kushal-novopay/jarvis-hud`.
+> Newer Claude Code versions also take a one-liner: `/plugin install jarvis-hud --marketplace JarvisStriker/jarvis-hud`.
 
 ### Option B: clone and load from a folder
 
@@ -91,13 +91,13 @@ Use this if you want to edit the mod yourself. Changes reload automatically in i
 **Windows** (PowerShell):
 
 ```powershell
-git clone https://github.com/kushal-novopay/jarvis-hud.git "$env:USERPROFILE\.claude\mods\jarvis-hud"
+git clone https://github.com/JarvisStriker/jarvis-hud.git "$env:USERPROFILE\.claude\mods\jarvis-hud"
 ```
 
 **macOS** (Terminal):
 
 ```bash
-git clone https://github.com/kushal-novopay/jarvis-hud.git ~/.claude/mods/jarvis-hud
+git clone https://github.com/JarvisStriker/jarvis-hud.git ~/.claude/mods/jarvis-hud
 ```
 
 Then add the folder to your **user** settings file:
