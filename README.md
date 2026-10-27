@@ -2,12 +2,16 @@
 
 A Claude Code mod that shows your remaining tokens and acts before you run out.
 
-- **Band above the prompt.** One line showing context left, and your 5-hour and weekly plan quotas with reset timers:
-  ```
-  ◢ CTX ▰▰▰▰▰▰▱▱▱▱ 48K · 5H ▰▰▰▱▱ 58% ↻2h14m · 7D ▰▰▰▰▱ 81% ↻3d4h
-  ```
-  It goes from Claude orange to amber to red as things fill up. On narrow windows it drops detail rather than wrapping.
-  In the desktop app the band is graphical instead: a mini arc reactor for context with a turns-left forecast, and a capsule gauge per quota. Hover any part for exact numbers. The reactor pulses past 85% and spins fast while compacting.
+- **Band above the prompt.** It shows the context you have left, plus your 5-hour and weekly plan quotas with reset timers. Everything goes from Claude orange to amber to red as things fill up.
+  - **In the desktop app** it's a graphical *reactor strip*:
+    - **Mini arc reactor** for context, with tokens left and a turns-left forecast
+    - **Capsule gauge** for each quota
+    - **Hover** any part for exact numbers
+    - **Animation:** pulses past 85%, spins fast while compacting
+  - **In a terminal** it's one line of text that drops detail on narrow windows rather than wrapping:
+    ```
+    ◢ CTX ▰▰▰▰▰▰▱▱▱▱ 48K · 5H ▰▰▰▱▱ 58% ↻2h14m · 7D ▰▰▰▰▱ 81% ↻3d4h
+    ```
 - **HUD pane** (`/jarvis`, or click `◢`):
   - **Gauge:** an animated arc-reactor ring for context, with inner rings for your quotas.
   - **Projections:** tokens used per turn, turns left until compaction, and when the 5-hour quota runs out at your current pace.
@@ -18,44 +22,16 @@ A Claude Code mod that shows your remaining tokens and acts before you run out.
   - A warning before a file read that would use a large share of the remaining context.
 - **Acts for you:** past 85% context, it compacts the conversation once the current turn ends. It keeps goals, decisions, files touched and open TODOs.
 
-> The desktop app's Code tab shows the full graphical HUD. In a terminal you get the same band and a text version of the pane.
+> The desktop app's Code tab shows the full graphical HUD: the reactor strip and the graphical pane. In a terminal you get a text band and a text version of the pane.
 
 ---
 
 ## Requirements
 
 - **Claude Code with mod support.** Tested on CLI 2.1.286 and the desktop app. Check yours with `claude --version`.
-- **Access to this repository.** It is **private**, so each person needs:
-  1. To be invited as a collaborator on GitHub (ask the owner).
-  2. A GitHub credential that git can use. The install never asks for a password. Setup is below.
-
-### One-time GitHub setup
-
-**Windows** (PowerShell):
-
-```powershell
-winget install --id Git.Git -e
-winget install --id GitHub.cli -e
-```
-
-Close and reopen PowerShell so the new commands are found, then:
-
-```powershell
-gh auth login
-gh auth setup-git
-```
-
-**macOS** (Terminal):
-
-```bash
-brew install git gh
-gh auth login
-gh auth setup-git
-```
-
-No Homebrew? Install it from <https://brew.sh>, or install the GitHub CLI from <https://cli.github.com>.
-
-For `gh auth login`, choose **GitHub.com** → **HTTPS** → **Login with a web browser**.
+- **Git**, so Claude Code can fetch the repository. The repository is public, so you need no GitHub account or login.
+  - **Windows:** `winget install --id Git.Git -e`, then reopen PowerShell
+  - **macOS:** `xcode-select --install`, or `brew install git`
 
 ---
 
@@ -130,13 +106,18 @@ claude --plugin-dir ~/.claude/mods/jarvis-hud
 
 ## Check that it works
 
+Run `claude plugin list`. You should see `jarvis-hud` and its version:
+
+- **Option A** lists it as `jarvis-hud@jarvis-hud` under *Installed plugins*.
+- **Option B** lists it as `jarvis-hud@inline` under *Session-only plugins*, with your folder's path.
+
 Start a new session. The band should appear above the prompt right away:
 
 ```
 ◢ JARVIS online · 200K context window · gauges light up after the first reply
 ```
 
-Send any prompt and the gauges fill in. Run `/jarvis status` for a text briefing.
+Send any prompt and the gauges fill in. In the desktop app the band then becomes the reactor strip. Run `/jarvis status` for a text briefing.
 
 ---
 
@@ -162,7 +143,7 @@ Settings are saved and carry over between sessions.
 
 | | Windows | macOS |
 | --- | --- | --- |
-| Graphical HUD (gauge, donut) | Desktop app Code tab | Desktop app Code tab |
+| Graphical HUD (reactor strip, gauge, donut) | Desktop app Code tab | Desktop app Code tab |
 | Terminal colours | Windows Terminal: full colour | iTerm2, Ghostty, kitty: full colour. Terminal.app: approximate |
 | Voice alerts | Not available: a toast appears instead | Uses the built-in `say` voice |
 | System notifications | Uses your Claude Code notification setting | Uses your Claude Code notification setting |
@@ -181,7 +162,11 @@ Settings are saved and carry over between sessions.
   claude plugin update jarvis-hud@jarvis-hud
   ```
   Then restart Claude Code, or run `/reload-plugins` in an open session.
-- **Option B:** run `git pull` in the mod folder. Open sessions reload automatically.
+- **Option B:** pull the latest code into your mod folder. Open sessions reload automatically.
+  ```bash
+  git -C ~/.claude/mods/jarvis-hud pull
+  ```
+  The `claude plugin ... update` commands are for Option A only. With Option B they report the marketplace or plugin as not found.
 
 ## Uninstall
 
@@ -199,8 +184,9 @@ Settings are saved and carry over between sessions.
 | Symptom | Fix |
 | --- | --- |
 | No band at all | Start a **new** session after installing. Run `claude plugin list` and check that `jarvis-hud` is listed and enabled. For Option B, check the path in `settings.json`, including doubled `\\` on Windows. |
-| `Marketplace file not found` | Your GitHub account can't read the repo. Accept the invite, then run `gh auth status`. |
-| Install hangs or asks for a password | Run `gh auth setup-git` so git can use your GitHub login. |
+| `Marketplace 'jarvis-hud' not found` or `Plugin "jarvis-hud" not found` when updating | You loaded it from a folder (Option B), not the marketplace. Update with `git pull` in the mod folder instead. |
+| `Marketplace file not found` when adding it | Check the spelling: `JarvisStriker/jarvis-hud`. Make sure `git` is installed and on your PATH. |
+| No graphical strip in the desktop app | The strip appears after the first reply. Before that the band shows the "JARVIS online" line. Start a new session if it was open before you updated. |
 | Band says "gauges light up after the first reply" | Normal for a new session. Send a prompt. |
 | `/jarvis` in Git Bash on Windows opens a path | Git Bash rewrites `/jarvis`. Type it inside Claude Code, not as a shell command. |
 | Anything else | Start with `claude --debug` and look for lines starting with `jarvis-hud:`. |
