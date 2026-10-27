@@ -63,9 +63,25 @@ test('a reading lights the band, the pane and the briefing on every surface', as
   expect(await strip.find({ key: 'hud' })).toBeDefined()
   await strip.unmount()
 
+  const textPane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await textPane.find({ type: 'Text', text: /152K \/ 200K · 76%/ })).toBeDefined()
+  await textPane.unmount()
+
+  // the desktop pane draws sized frames: an unsized one shrinks into a 150 px box
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // no big reactor: the readout cards lead the pane
+  const [stats] = await pane.findAll({ type: 'Svg' })
+  expect(String(stats?.props.source)).not.toContain('TOKENS LEFT')
+  expect(stats?.props.width).toBe(435)
+  expect(Number(stats?.props.height)).toBeGreaterThan(100)
+  expect(String(stats?.props.source)).toContain('48K left')
+  expect(String(stats?.props.source)).toContain('152K of 200K used')
+  expect(String(stats?.props.source)).toContain('42% used')
+  expect(await pane.find({ type: 'Text', text: /152K \/ 200K/ })).toBeUndefined()
+  await pane.unmount()
+
   for (const surface of ['terminal', 'desktop'] as const) {
     const pane = await $.ui.mount({ ...PANE, surface })
-    expect(await pane.find({ type: 'Text', text: /152K \/ 200K · 76%/ })).toBeDefined()
     // crossing 70% left a line in the log
     expect(await pane.find({ type: 'Text', text: /Context at 76%/ })).toBeDefined()
     expect(await pane.find({ key: 'compact' })).toBeDefined()
@@ -176,4 +192,57 @@ test('a narrow band sheds detail, and the breakdown names the biggest consumer',
 
   const status = await $.command.run({ command: 'jarvis', args: 'status' })
   expect(status.text).not.toContain('cost')
+})
+
+test('turns, tools and files feed the session stats on both surfaces', async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-10-27T10:00:00Z') })
+  mock.store(on)
+  on('ui.toast', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'jarvis' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('fs.stat', () => ({ value: { kind: 'file', size: 400, mtimeMs: 0, isLink: false } }))
+  on('tool.call', (_, e) => ({ result: {}, text: e.tool === 'Read' ? 'x'.repeat(8_000) : 'y'.repeat(2_000) }))
+  on('session.usage', () => ({
+    value: { startedAt: Date.parse('2026-10-27T09:00:00Z'), rateLimits: [], context: { tokens: 0, window: 200_000, percent: 0 } },
+  }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  for (let i = 1; i <= 4; i++) {
+    await clock.advance(60_000)
+    await $.tool.call({ tool: 'Read', file_path: '/repo/schema.sql' })
+    await $.tool.call({ tool: 'Bash', command: 'ls' })
+    await $.session.measure({
+      ...MEASURE,
+      context: { tokens: 20_000 * i, window: 200_000, percent: 10 * i },
+      rateLimits: [{ kind: 'five_hour', percentUsed: 10 * i, resetsAt: '2026-10-27T13:00:00Z' }],
+    })
+    await $.turn.complete({
+      answer: 'ok', durationMs: 10_000 * i, isAborted: false, turnId: `t${i}`, reason: 'answer',
+      usage: { input_tokens: 1_000, output_tokens: 500, cache_read_input_tokens: 9_000, cache_creation_input_tokens: 0, model: 'm' },
+    })
+  }
+  await clock.settle()
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const drawn = (await pane.findAll({ type: 'Svg' })).map(s => String(s.props.source))
+  const all = drawn.join('\n')
+  expect(all).toContain('CONTEXT OVER TIME')
+  expect(all).toContain('5-HOUR QUOTA PACE')
+  expect(all).toContain('CACHE HIT')
+  expect(all).toContain('90%') // 9,000 of 10,000 input tokens from cache
+  expect(all).toContain('25s avg')
+  expect(all).toContain('0 subagents')
+  expect(all).toContain('TOOLS BY CONTEXT')
+  expect(all).toContain('×4 · 8K') // Read: 4 calls, 32,000 characters
+  expect(all).toContain('schema.sql')
+  await pane.unmount()
+
+  const text = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await text.find({ type: 'Text', text: /90% of input from cache/ })).toBeDefined()
+  expect(await text.find({ type: 'Text', text: /Read ×4 8K/ })).toBeDefined()
+  expect(await text.find({ type: 'Text', text: /schema\.sql 8K/ })).toBeDefined()
+  await text.unmount()
 })
