@@ -13,7 +13,7 @@ A Claude Code mod that shows your remaining tokens and acts before you run out.
     ◢ CTX ▰▰▰▰▰▰▱▱▱▱ 48K · 5H ▰▰▰▱▱ 58% ↻2h14m · 7D ▰▰▰▰▱ 81% ↻3d4h
     ```
 - **HUD pane** (`/jarvis`, or click `◢`):
-  - **Gauge:** an animated arc-reactor ring for context, with inner rings for your quotas.
+  - **Readout:** a card each for context, the 5-hour quota and the weekly quota, then a forecast row for burn rate, turns to compaction and whether the 5-hour quota lasts.
   - **Projections:** tokens used per turn, turns left until compaction, and when the 5-hour quota runs out at your current pace.
   - **Context over time:** context used after each turn, with the auto-compact line and a marker wherever a compaction freed space.
   - **5-hour quota pace:** quota used across its window against an even pace to the reset, and when you'll run out at the current rate.
@@ -147,7 +147,7 @@ Settings are saved and carry over between sessions.
 
 | | Windows | macOS |
 | --- | --- | --- |
-| Graphical HUD (reactor strip, gauge, donut) | Desktop app Code tab | Desktop app Code tab |
+| Graphical HUD (reactor strip, cards, charts) | Desktop app Code tab | Desktop app Code tab |
 | Terminal colours | Windows Terminal: full colour | iTerm2, Ghostty, kitty: full colour. Terminal.app: approximate |
 | Voice alerts | Not available: a toast appears instead | Uses the built-in `say` voice |
 | System notifications | Uses your Claude Code notification setting | Uses your Claude Code notification setting |
