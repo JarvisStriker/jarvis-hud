@@ -1,0 +1,14 @@
+{
+  "name": "jarvis-hud",
+  "owner": {
+    "name": "kushal-novopay"
+  },
+  "description": "JARVIS-style token HUD for Claude Code.",
+  "plugins": [
+    {
+      "name": "jarvis-hud",
+      "source": "./",
+      "description": "Stark-style HUD for token reserves: context and plan-limit gauges, burn-rate projections, alerts and auto-compaction."
+    }
+  ]
+}

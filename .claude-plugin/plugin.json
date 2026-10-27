@@ -1,0 +1,9 @@
+{
+  "name": "jarvis-hud",
+  "version": "0.2.0",
+  "description": "Stark-style HUD for token reserves: context and plan-limit gauges, burn-rate projections, alerts and auto-compaction.",
+  "author": {
+    "name": "kushal-novopay"
+  },
+  "types": "./types/index.d.ts"
+}
