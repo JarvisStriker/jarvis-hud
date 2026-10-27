@@ -2,9 +2,9 @@
 
 A Claude Code mod that shows your remaining tokens and acts before you run out.
 
-- **Band above the prompt.** One line showing context left, your 5-hour and weekly plan quotas with reset timers, and session cost:
+- **Band above the prompt.** One line showing context left, and your 5-hour and weekly plan quotas with reset timers:
   ```
-  ◢ CTX ▰▰▰▰▰▰▱▱▱▱ 48K · 5H ▰▰▰▱▱ 58% ↻2h14m · 7D ▰▰▰▰▱ 81% ↻3d4h · $3.50
+  ◢ CTX ▰▰▰▰▰▰▱▱▱▱ 48K · 5H ▰▰▰▱▱ 58% ↻2h14m · 7D ▰▰▰▰▱ 81% ↻3d4h
   ```
   It goes from Claude orange to amber to red as things fill up. On narrow windows it drops detail rather than wrapping.
 - **HUD pane** (`/jarvis`, or click `◢`):
@@ -144,11 +144,9 @@ Send any prompt and the gauges fill in. Run `/jarvis status` for a text briefing
 | Command | What it does |
 | --- | --- |
 | `/jarvis` | Open the HUD pane |
-| `/jarvis status` | Briefing: context, burn rate, quotas, cost, settings |
+| `/jarvis status` | Briefing: context, burn rate, quotas, settings |
 | `/jarvis compact` | Compact the conversation now |
 | `/jarvis auto on\|off\|<30-98>` | Turn auto-compact on or off, or set its threshold (default 85%) |
-| `/jarvis currency <code>` | Show cost in another currency (`USD`, `INR`, `EUR`, `GBP`, `JPY`…). Default is USD |
-| `/jarvis rate live\|<amount>` | Use the live exchange rate, or set a fixed rate per US dollar |
 | `/jarvis guard on\|off` | Warn before large file reads (default on) |
 | `/jarvis voice on\|off` | Speak alerts aloud (default off; see the platform notes) |
 | `/jarvis band on\|off` | Show or hide the band |
@@ -169,8 +167,8 @@ Settings are saved and carry over between sessions.
 | System notifications | Uses your Claude Code notification setting | Uses your Claude Code notification setting |
 
 - **Pane in the terminal:** it only opens by itself if the terminal is at least 144 columns wide. Otherwise run `/jarvis`.
-- **Exchange rates:** fetched from `open.er-api.com` (no account, nothing about you is sent), only when your currency isn't USD. Cached for 12 hours. If the site can't be reached, the last known rate is kept.
-- **Plan quotas** appear only on a Claude subscription (Pro/Max). With an API key you see context and cost only.
+- **Plan quotas** appear only on a Claude subscription (Pro/Max). With an API key you see context only.
+- **Network:** the mod makes no network requests.
 
 ---
 

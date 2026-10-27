@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Breakdown, Fx, HudSettings, Limit, LogLine, Reading, Sample } from '../types'
+import type { Breakdown, HudSettings, Limit, LogLine, Reading, Sample } from '../types'
 
 // ── state ────────────────────────────────────────────────────────────────
 
@@ -19,11 +19,6 @@ const alertedA = atom({ plugin: 'jarvis-hud', key: 'alerted' } as const, [])
 const tickA = atom({ plugin: 'jarvis-hud', key: 'tick' } as const, 0)
 const bandHiddenA = atom({ plugin: 'jarvis-hud', key: 'bandHidden' } as const, false)
 const compactingA = atom({ plugin: 'jarvis-hud', key: 'compacting' } as const, false)
-// Cost is reported in US dollars and shown in the currency each user picks (/jarvis currency).
-const FX_DEFAULT: Fx = { code: 'USD', rate: 1, source: 'default' }
-const FX_URL = 'https://open.er-api.com/v6/latest/USD'
-const FX_MAX_AGE = 12 * 60 * 60_000
-const fxA = atom({ plugin: 'jarvis-hud', key: 'fx' } as const, FX_DEFAULT)
 
 // ── palette & formatting ─────────────────────────────────────────────────
 
@@ -58,28 +53,6 @@ const span = (ms: number) => {
   if (h < 48) return `${h}h${String(m % 60).padStart(2, '0')}m`
   return `${Math.floor(h / 24)}d${h % 24}h`
 }
-
-const SYMBOLS: Record<string, string> = {
-  USD: '$', INR: '₹', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', KRW: '₩', AUD: 'A$', CAD: 'C$',
-  SGD: 'S$', NZD: 'NZ$', HKD: 'HK$', BRL: 'R$', MXN: 'MX$', ZAR: 'R', RUB: '₽', TRY: '₺', PHP: '₱',
-}
-const NO_DECIMALS = new Set(['JPY', 'KRW'])
-
-const symbol = (code: string) => SYMBOLS[code] ?? `${code} `
-
-// Western grouping (1,234,567), or Indian lakh/crore grouping (12,34,567) for rupees.
-const group = (n: number, code: string) => {
-  const [whole = '0', frac] = n.toFixed(n < 100 && !NO_DECIMALS.has(code) ? 2 : 0).split('.')
-  const grouped =
-    code === 'INR' && whole.length > 3
-      ? `${whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${whole.slice(-3)}`
-      : whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  return grouped + (frac ? `.${frac}` : '')
-}
-
-const money = (usd: number, fx: Fx) => `${symbol(fx.code)}${group(usd * fx.rate, fx.code)}`
-
-const rateText = (fx: Fx) => (fx.code === 'USD' ? '' : `${symbol(fx.code)}${fx.rate.toFixed(2)}/$ ${fx.source}`)
 
 const clock = (ms: number) => {
   const d = new Date(ms)
@@ -223,7 +196,6 @@ async function briefing($: EngineInterface) {
   const r = await read($, readingA)
   if (!r || r.tokens === undefined) return 'Telemetry offline: no response measured yet. Send a prompt and I will report.'
   const s = await read($, settingsA)
-  const fx = await read($, fxA)
   const p = project(r, await read($, samplesA), s, await read($, breakdownA), await $.clock.now())
   const lines = [
     `Context: ${usedPct(r)}% used, ${fmtK(left(r))} of ${fmtK(r.window)} tokens in reserve.`,
@@ -239,7 +211,6 @@ async function briefing($: EngineInterface) {
         ? '5-hour quota will reset before you hit it at this pace.'
         : `At this pace the 5-hour quota runs out around ${clock(p.quotaEta)}.`
       : '',
-    r.usd !== undefined ? `Session cost: ${money(r.usd, fx)}${fx.code === 'USD' ? '' : ` (at ${rateText(fx)} rate)`}.` : '',
     `Auto-compact ${s.autoCompact ? `armed at ${s.compactAt}%` : 'off'} · voice ${s.voice ? 'on' : 'off'} · read guard ${s.readGuard ? 'on' : 'off'}.`,
   ]
   return lines.filter(Boolean).join('\n')
@@ -399,37 +370,6 @@ ${legend}
 </svg>`
 }
 
-async function loadFx($: EngineInterface, opts: { force?: boolean; code?: string } = {}) {
-  const raw = (await $.store.get('fx')) as Partial<Fx> | undefined
-  // Rates saved before currencies were selectable were rupees.
-  const saved: Fx | undefined = raw && typeof raw.rate === 'number' ? { ...FX_DEFAULT, code: 'INR', ...raw } as Fx : undefined
-  const code = opts.code ?? saved?.code ?? FX_DEFAULT.code
-  const now = await $.clock.now()
-  const keep = async (fx: Fx) => {
-    await update($, fxA, () => fx)
-    await $.store.set('fx', fx)
-    return fx
-  }
-
-  if (code === 'USD') return keep({ code, rate: 1, source: 'live', at: now })
-  if (saved && saved.code === code && !opts.force && (saved.source === 'manual' || now - (saved.at ?? 0) < FX_MAX_AGE)) {
-    await update($, fxA, () => saved)
-    return saved
-  }
-  try {
-    const res = await $.http.fetch(FX_URL)
-    const rate = res.ok ? (JSON.parse(res.text) as { rates?: Record<string, number> }).rates?.[code] : undefined
-    if (typeof rate === 'number' && rate > 0) return keep({ code, rate, source: 'live', at: now })
-  } catch {
-    // offline or blocked: keep the last known rate
-  }
-  if (saved && saved.code === code) {
-    await update($, fxA, () => saved)
-    return saved
-  }
-  return undefined
-}
-
 // ── register ─────────────────────────────────────────────────────────────
 
 export const register: Register = on => {
@@ -439,11 +379,10 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'jarvis',
-      description: 'JARVIS token HUD: status, compact, auto on|off|<pct>, voice on|off, guard on|off, band on|off, currency <code>, rate live|<per $>',
-      argumentHint: '[status|compact|auto|voice|guard|band|currency|rate]',
+      description: 'JARVIS token HUD: status, compact, auto on|off|<pct>, voice on|off, guard on|off, band on|off',
+      argumentHint: '[status|compact|auto|voice|guard|band]',
     })
     $.clock.every(30_000, () => void update($, tickA, n => n + 1))
-    $.clock.after(0, () => void loadFx($))
 
     try {
       const u = await $.session.usage()
@@ -454,7 +393,6 @@ export const register: Register = on => {
         window: u.context.window,
         pct: u.context.percent,
         limits: u.rateLimits.map(l => ({ kind: l.kind, pct: l.percentUsed, resetsAt: l.resetsAt })),
-        usd: u.cost?.usd,
         at,
       }))
     } catch {
@@ -471,7 +409,6 @@ export const register: Register = on => {
       window: e.context.window,
       pct: e.context.percent,
       limits: e.rateLimits.map(l => ({ kind: l.kind, pct: l.percentUsed, resetsAt: l.resetsAt })),
-      usd: e.cost?.usd,
       at: await $.clock.now(),
     }
     await update($, readingA, () => reading)
@@ -555,28 +492,8 @@ export const register: Register = on => {
         if (flag === undefined) return { text: 'Usage: /jarvis band on|off' }
         await update($, bandHiddenA, () => !flag)
         return { text: `Band ${flag ? 'shown' : 'hidden'}.` }
-      case 'currency': {
-        const code = arg.toUpperCase()
-        if (!/^[A-Z]{3}$/.test(code)) return { text: 'Usage: /jarvis currency <code>, e.g. USD, INR, EUR, GBP' }
-        const fx = await loadFx($, { force: true, code })
-        if (!fx) return { text: `No rate for ${code} right now. Set one yourself: /jarvis currency ${code} then /jarvis rate <${code} per $>.` }
-        return { text: code === 'USD' ? 'Cost shown in US dollars.' : `Cost shown in ${code} at ${rateText(fx)}.` }
-      }
-      case 'rate': {
-        const current = await read($, fxA)
-        const manual = Number(arg)
-        if (Number.isFinite(manual) && manual > 0) {
-          const fx: Fx = { code: current.code, rate: manual, source: 'manual', at: await $.clock.now() }
-          await update($, fxA, () => fx)
-          await $.store.set('fx', fx)
-          return { text: `Cost now shown at ${symbol(fx.code)}${manual.toFixed(2)} per $ (fixed).` }
-        }
-        if (arg !== 'live' && arg !== '') return { text: 'Usage: /jarvis rate live|<amount per $>' }
-        const fx = await loadFx($, { force: true, code: current.code })
-        return { text: fx ? `USD→${fx.code} at ${symbol(fx.code)}${fx.rate.toFixed(2)} (${fx.source}).` : 'Rate service unreachable; keeping the last rate.' }
-      }
       default:
-        return { text: 'Commands: /jarvis [hud|status|compact|auto on|off|<pct>|voice on|off|guard on|off|band on|off|currency <code>|rate live|<n>]' }
+        return { text: 'Commands: /jarvis [hud|status|compact|auto on|off|<pct>|voice on|off|guard on|off|band on|off]' }
     }
   })
 
@@ -586,7 +503,6 @@ export const register: Register = on => {
     const r = await read($, readingA)
     await read($, tickA)
     const compacting = await read($, compactingA)
-    const fx = await read($, fxA)
     const { Box, Text, Button } = $.ui.resolve(e)
     if (!r || r.tokens === undefined) {
       return (
@@ -604,10 +520,10 @@ export const register: Register = on => {
     const pct = usedPct(r)
 
     // One row, always: try the richest layout that fits the band's width, then
-    // shed detail (bar length, reset timers, the weekly quota, cost) until it does.
+    // shed detail (bar length, reset timers, the weekly quota) until it does.
     type Run = { text: string; color?: string }
     type Seg = Run[]
-    const layout = (cells: number, limitCells: number, resets: boolean, week: boolean, cost: boolean): Seg[] => {
+    const layout = (cells: number, limitCells: number, resets: boolean, week: boolean): Seg[] => {
       const segs: Seg[] = [
         [
           { text: 'CTX ', color: DIM },
@@ -623,20 +539,19 @@ export const register: Register = on => {
         if (resets && l.resetsAt) seg.push({ text: ` ↻${span(Date.parse(l.resetsAt) - r.at)}`, color: DIM })
         segs.push(seg)
       }
-      if (cost && r.usd !== undefined) segs.push([{ text: money(r.usd, fx), color: DIM }])
       return segs
     }
     const width = (segs: Seg[]) => segs.reduce((n, seg) => n + seg.reduce((m, run) => m + run.text.length, 0), 0) + (segs.length - 1) * 3
     const room = e.props.bodyColumns - 3 // the ◢ button and its gap
     const tries: Parameters<typeof layout>[] = [
-      [10, 5, true, true, true],
-      [8, 4, true, true, true],
-      [8, 0, true, true, true],
-      [6, 0, false, true, true],
-      [6, 0, false, false, true],
-      [5, 0, false, false, false],
+      [10, 5, true, true],
+      [8, 4, true, true],
+      [8, 0, true, true],
+      [6, 0, false, true],
+      [6, 0, false, false],
+      [5, 0, false, false],
     ]
-    const segs = tries.map(t => layout(...t)).find(x => width(x) <= room) ?? layout(4, 0, false, false, false)
+    const segs = tries.map(t => layout(...t)).find(x => width(x) <= room) ?? layout(4, 0, false, false)
 
     return (
       <Box flexDirection="row" flexWrap="nowrap" columnGap={1} alignItems="center">
@@ -666,7 +581,6 @@ export const register: Register = on => {
     const log = await read($, logA)
     const compacting = await read($, compactingA)
     const bandHidden = await read($, bandHiddenA)
-    const fx = await read($, fxA)
     await read($, tickA)
     const now = await $.clock.now()
     const narrow = e.props.bodyColumns < 44
@@ -728,13 +642,6 @@ export const register: Register = on => {
               {l.resetsAt ? <Text color={DIM}> · resets {span(Date.parse(l.resetsAt) - now)}</Text> : null}
             </Text>
           ))}
-          {r.usd !== undefined ? (
-            <Text>
-              <Text color={DIM}>COST      </Text>
-              <Text>{money(r.usd, fx)}</Text>
-              {fx.code === 'USD' ? null : <Text color={DIM}> · {rateText(fx)}</Text>}
-            </Text>
-          ) : null}
         </Box>
 
         <Box flexDirection="column">
